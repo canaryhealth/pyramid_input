@@ -32,6 +32,7 @@ dependencies = [
   'globre               >= 0.1.2',
   'aadict               >= 0.2.1',
   'morph                >= 0.1.1',
+  'six                  >= 1.6.0',
 ]
 
 extras_dependencies = {
