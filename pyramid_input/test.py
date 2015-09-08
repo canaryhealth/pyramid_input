@@ -7,9 +7,11 @@
 #------------------------------------------------------------------------------
 
 import unittest
+
 from pyramid import testing
 from pyramid.request import Request
 from pyramid.httpexceptions import HTTPBadRequest
+import six
 
 from pyramid_input import factory, includeme
 
@@ -26,6 +28,20 @@ class TestInputFactory(unittest.TestCase):
   def test_register(self):
     handler = factory(None, self.registry)
     self.assertEqual(handler.__name__, 'input_tween')
+
+#------------------------------------------------------------------------------
+def canon(val):
+  'Returns a canonical deep-copy version of `val`.'
+  if isinstance(val, dict):
+    return {canon(k): canon(val[k]) for k in sorted(val.keys())}
+  if isinstance(val, (list, tuple)):
+    return [canon(v) for v in val]
+  if isinstance(val, six.string_types):
+    try:
+      return str(val)
+    except UnicodeEncodeError:
+      return val
+  return val
 
 #------------------------------------------------------------------------------
 class TestInputTween(unittest.TestCase):
@@ -54,20 +70,8 @@ class TestInputTween(unittest.TestCase):
     self.request = request
     self.request.registry = self.registry
 
-  def u2s(self, obj):
-    if isinstance(obj, dict):
-      return {self.u2s(k): self.u2s(v) for k, v in obj.items()}
-    if isinstance(obj, (list, tuple)):
-      return [self.u2s(v) for v in obj]
-    if isinstance(obj, unicode):
-      try:
-        return str(obj)
-      except UnicodeEncodeError:
-        return obj
-    return obj
-
   def handler(self, request):
-    return repr(self.u2s(request.input))
+    return canon(request.input)
 
   def needYaml(self):
     try:
@@ -79,23 +83,23 @@ class TestInputTween(unittest.TestCase):
 
   def test_empty(self):
     self.setupRequest()
-    self.assertEqual(self.tween(self.request), '{}')
+    self.assertEqual(self.tween(self.request), canon({}))
 
   def test_qs_only(self):
     self.setupRequest('/path?foo=bar')
-    self.assertEqual(self.tween(self.request), repr({'foo': 'bar'}))
+    self.assertEqual(self.tween(self.request), canon({'foo': 'bar'}))
 
   def test_qs_unflatten(self):
     self.setupRequest('/path?foo.zig=bar&foo.zoo-0=e0&foo.zoo-1=e1')
-    self.assertEqual(self.tween(self.request), repr({'foo': {'zig': 'bar', 'zoo': ['e0', 'e1']}}))
+    self.assertEqual(self.tween(self.request), canon({'foo': {'zig': 'bar', 'zoo': ['e0', 'e1']}}))
 
   def test_payload_only(self):
     self.setupRequest('/path', 'foo.zig=bar&foo.zoo-0=e0&foo.zoo-1=e1')
-    self.assertEqual(self.tween(self.request), repr({'foo': {'zig': 'bar', 'zoo': ['e0', 'e1']}}))
+    self.assertEqual(self.tween(self.request), canon({'foo': {'zig': 'bar', 'zoo': ['e0', 'e1']}}))
 
   def test_json(self):
     self.setupRequest('/path', '{"foo":{"zig":"bar","zoo":["e0","e1"]}}', ctype='application/json')
-    self.assertEqual(self.tween(self.request), repr({'foo': {'zig': 'bar', 'zoo': ['e0', 'e1']}}))
+    self.assertEqual(self.tween(self.request), canon({'foo': {'zig': 'bar', 'zoo': ['e0', 'e1']}}))
 
   def test_json_invalid(self):
     self.setupRequest('/path', '{"foo":', ctype='application/json')
@@ -106,7 +110,7 @@ class TestInputTween(unittest.TestCase):
   def test_yaml(self):
     self.needYaml()
     self.setupRequest('/path', 'foo:\n  zig: bar\n  zoo:\n  - e0\n  - e1', ctype='application/yaml')
-    self.assertEqual(self.tween(self.request), repr({'foo': {'zig': 'bar', 'zoo': ['e0', 'e1']}}))
+    self.assertEqual(self.tween(self.request), canon({'foo': {'zig': 'bar', 'zoo': ['e0', 'e1']}}))
 
   def test_yaml_invalid(self):
     self.needYaml()
@@ -117,7 +121,7 @@ class TestInputTween(unittest.TestCase):
 
   def test_xml(self):
     self.setupRequest('/path', '<foo zig="bar"><zoo>e0</zoo><zoo>e1</zoo></foo>', ctype='text/xml')
-    self.assertEqual(self.tween(self.request), repr({'foo': {'zig': 'bar', 'zoo': ['e0', 'e1']}}))
+    self.assertEqual(self.tween(self.request), canon({'foo': {'zig': 'bar', 'zoo': ['e0', 'e1']}}))
 
   def test_xml_invalid(self):
     self.setupRequest('/path', '<foo>', ctype='application/xml')
@@ -136,8 +140,8 @@ class TestInputTween(unittest.TestCase):
 </foo>
 ''', ctype='text/xml')
     self.assertEqual(
-      str(self.tween(self.request)),
-      repr({'foo': {'zig': 'bar', 'zoo': ['e0', 'e1'], 'space': ['  ', {'idx': '1', None: '\n'}]}}))
+      self.tween(self.request),
+      canon({'foo': {'zig': 'bar', 'zoo': ['e0', 'e1'], 'space': ['  ', {'idx': '1', None: '\n'}]}}))
 
   def test_bad_contentType(self):
     self.setupRequest('/path', '\x89PNG\r\n', ctype='image/png')
@@ -147,39 +151,39 @@ class TestInputTween(unittest.TestCase):
 
   def test_combine_isolated(self):
     self.setupRequest('/path?foo=bar', 'zig=zag')
-    self.assertEqual(self.tween(self.request), repr({'foo': 'bar', 'zig': 'zag'}))
+    self.assertEqual(self.tween(self.request), canon({'foo': 'bar', 'zig': 'zag'}))
 
   def test_combine_deep_leaves(self):
     self.setupRequest('/path?foo.a=b&foo.c=d', 'foo.c=f&foo.g=h')
-    self.assertEqual(self.tween(self.request), repr({'foo': {'a': 'b', 'c': ['d', 'f'], 'g': 'h'}}))
+    self.assertEqual(self.tween(self.request), canon({'foo': {'a': 'b', 'c': ['d', 'f'], 'g': 'h'}}))
 
   def test_combine_deep_branch(self):
     self.setupRequest('/path?foo.a=b&foo.c=d', 'foo=h')
-    self.assertEqual(self.tween(self.request), repr({'foo': [{'a': 'b', 'c': 'd'}, 'h']}))
+    self.assertEqual(self.tween(self.request), canon({'foo': [{'a': 'b', 'c': 'd'}, 'h']}))
 
   def test_combine_conflict_merge(self):
     self.setupRequest('/path?foo=bar', 'foo=zag')
-    self.assertEqual(self.tween(self.request), repr({'foo': ['bar', 'zag']}))
+    self.assertEqual(self.tween(self.request), canon({'foo': ['bar', 'zag']}))
 
   def test_combine_conflict_override(self):
     self.setupTween(settings={'pyramid_input.combine.deep': False})
     self.setupRequest('/path?foo=bar', 'foo=zag')
-    self.assertEqual(self.tween(self.request), repr({'foo': 'zag'}))
+    self.assertEqual(self.tween(self.request), canon({'foo': 'zag'}))
 
   def test_config_native_dict(self):
     def handler_aadict(request):
-      return repr(self.u2s(request.input.zig.zag.zog))
+      return canon(request.input.zig.zag.zog)
     def handler_dict(request):
-      return repr(self.u2s(request.input['zig']['zag']['zog']))
+      return canon(request.input['zig']['zag']['zog'])
     self.setupTween(handler=handler_dict)
     self.setupRequest('/path?zig.zag.zog=bar')
-    self.assertEqual(self.tween(self.request), repr('bar'))
+    self.assertEqual(self.tween(self.request), canon('bar'))
     self.setupTween(handler=handler_aadict)
     self.setupRequest('/path?zig.zag.zog=bar')
-    self.assertEqual(self.tween(self.request), repr('bar'))
+    self.assertEqual(self.tween(self.request), canon('bar'))
     self.setupTween(handler=handler_dict, settings={'pyramid_input.native-dict': True})
     self.setupRequest('/path?zig.zag.zog=bar')
-    self.assertEqual(self.tween(self.request), repr('bar'))
+    self.assertEqual(self.tween(self.request), canon('bar'))
     self.setupTween(handler=handler_aadict, settings={'pyramid_input.native-dict': True})
     self.setupRequest('/path?zig.zag.zog=bar')
     with self.assertRaises(AttributeError) as cm:
@@ -188,7 +192,7 @@ class TestInputTween(unittest.TestCase):
 
   def test_config_attribute_name(self):
     def handler_data(request):
-      return repr(self.u2s(request.data))
+      return canon(request.data)
     self.setupTween(handler=handler_data)
     self.setupRequest('/path?foo=bar')
     with self.assertRaises(AttributeError) as cm:
@@ -196,11 +200,11 @@ class TestInputTween(unittest.TestCase):
     self.assertEqual(str(cm.exception), "'Request' object has no attribute 'data'")
     self.setupTween(handler=handler_data, settings={'pyramid_input.attribute-name': 'data'})
     self.setupRequest('/path?foo=bar')
-    self.assertEqual(self.tween(self.request), repr({'foo': 'bar'}))
+    self.assertEqual(self.tween(self.request), canon({'foo': 'bar'}))
 
   def test_config_enabled(self):
     self.setupRequest('/path?foo=bar')
-    self.assertEqual(self.tween(self.request), repr({'foo': 'bar'}))
+    self.assertEqual(self.tween(self.request), canon({'foo': 'bar'}))
     self.setupTween(settings={'pyramid_input.enabled': False})
     self.setupRequest('/path?foo=bar')
     with self.assertRaises(AttributeError) as cm:
@@ -209,42 +213,42 @@ class TestInputTween(unittest.TestCase):
 
   def test_config_exclude(self):
     def handler(request):
-      return repr(self.u2s(getattr(request, 'input', None)))
+      return canon(getattr(request, 'input', None))
     self.setupTween(handler=handler, settings={'pyramid_input.exclude': '/a /b/**'})
     self.setupRequest('/path?foo=bar')
-    self.assertEqual(self.tween(self.request), repr({'foo': 'bar'}))
+    self.assertEqual(self.tween(self.request), canon({'foo': 'bar'}))
     self.setupRequest('/a?foo=bar')
-    self.assertEqual(self.tween(self.request), repr(None))
+    self.assertEqual(self.tween(self.request), canon(None))
     self.setupRequest('/a/path?foo=bar')
-    self.assertEqual(self.tween(self.request), repr({'foo': 'bar'}))
+    self.assertEqual(self.tween(self.request), canon({'foo': 'bar'}))
     self.setupRequest('/b?foo=bar')
-    self.assertEqual(self.tween(self.request), repr({'foo': 'bar'}))
+    self.assertEqual(self.tween(self.request), canon({'foo': 'bar'}))
     self.setupRequest('/b/path/zoo?foo=bar')
-    self.assertEqual(self.tween(self.request), repr(None))
+    self.assertEqual(self.tween(self.request), canon(None))
 
   def test_config_include(self):
     def handler(request):
-      return repr(self.u2s(getattr(request, 'input', None)))
+      return canon(getattr(request, 'input', None))
     self.setupTween(handler=handler, settings={'pyramid_input.include': '/a /a/**'})
     self.setupRequest('/path?foo=bar')
-    self.assertEqual(self.tween(self.request), repr(None))
+    self.assertEqual(self.tween(self.request), canon(None))
     self.setupRequest('/a?foo=bar')
-    self.assertEqual(self.tween(self.request), repr({'foo': 'bar'}))
+    self.assertEqual(self.tween(self.request), canon({'foo': 'bar'}))
     self.setupRequest('/a/path?foo=bar')
-    self.assertEqual(self.tween(self.request), repr({'foo': 'bar'}))
+    self.assertEqual(self.tween(self.request), canon({'foo': 'bar'}))
 
   def test_config_require_dict(self):
     self.setupRequest('/path', 'foo: bar', ctype='application/yaml')
-    self.assertEqual(self.tween(self.request), repr({'foo': 'bar'}))
+    self.assertEqual(self.tween(self.request), canon({'foo': 'bar'}))
     self.setupRequest('/path', '["foo", "bar"]', ctype='application/yaml')
     ret = self.tween(self.request)
     self.assertEqual(ret.status_code, 400)
     self.assertEqual(str(ret), 'Payload must evaluate to dict-type')
     self.setupTween(settings={'pyramid_input.require-dict': False})
     self.setupRequest('/path', 'foo: bar', ctype='application/yaml')
-    self.assertEqual(self.tween(self.request), repr({'foo': 'bar'}))
+    self.assertEqual(self.tween(self.request), canon({'foo': 'bar'}))
     self.setupRequest('/path', '["foo", "bar"]', ctype='application/yaml')
-    self.assertEqual(self.tween(self.request), repr(['foo', 'bar']))
+    self.assertEqual(self.tween(self.request), canon(['foo', 'bar']))
 
   def test_config_fail_unknown(self):
     self.setupRequest('/path', '\x89PNG\r\n', ctype='image/png')
@@ -253,7 +257,7 @@ class TestInputTween(unittest.TestCase):
     self.assertEqual(str(ret), 'Unknown/unsupported content-type "image/png"')
     self.setupTween(settings={'pyramid_input.fail-unknown': False})
     self.setupRequest('/path', '\x89PNG\r\n', ctype='image/png')
-    self.assertEqual(self.tween(self.request), repr({}))
+    self.assertEqual(self.tween(self.request), canon({}))
 
   def test_config_error_handler(self):
     def error_handler(request, error):
@@ -271,6 +275,7 @@ class TestInputTween(unittest.TestCase):
     self.assertEqual(ret.status_code, 400)
     self.assertEqual(ret.content_type, 'application/json')
     self.assertEqual(ret.body, '{"status": 400, "message": "Invalid XML"}')
+
 
 #------------------------------------------------------------------------------
 # end of $Id$
