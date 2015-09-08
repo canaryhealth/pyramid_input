@@ -7,6 +7,7 @@
 #------------------------------------------------------------------------------
 
 import unittest
+from collections import OrderedDict
 
 from pyramid import testing
 from pyramid.request import Request
@@ -33,7 +34,7 @@ class TestInputFactory(unittest.TestCase):
 def canon(val):
   'Returns a canonical deep-copy version of `val`.'
   if isinstance(val, dict):
-    return {canon(k): canon(val[k]) for k in sorted(val.keys())}
+    return {canon(k): canon(val[k]) for k in sorted(val.keys(), key=repr)}
   if isinstance(val, (list, tuple)):
     return [canon(v) for v in val]
   if isinstance(val, six.string_types):
@@ -144,7 +145,7 @@ class TestInputTween(unittest.TestCase):
       canon({'foo': {'zig': 'bar', 'zoo': ['e0', 'e1'], 'space': ['  ', {'idx': '1', None: '\n'}]}}))
 
   def test_bad_contentType(self):
-    self.setupRequest('/path', '\x89PNG\r\n', ctype='image/png')
+    self.setupRequest('/path', b'\x89PNG\r\n', ctype='image/png')
     ret = self.tween(self.request)
     self.assertEqual(ret.status_code, 400)
     self.assertEqual(str(ret), 'Unknown/unsupported content-type "image/png"')
@@ -251,12 +252,12 @@ class TestInputTween(unittest.TestCase):
     self.assertEqual(self.tween(self.request), canon(['foo', 'bar']))
 
   def test_config_fail_unknown(self):
-    self.setupRequest('/path', '\x89PNG\r\n', ctype='image/png')
+    self.setupRequest('/path', b'\x89PNG\r\n', ctype='image/png')
     ret = self.tween(self.request)
     self.assertEqual(ret.status_code, 400)
     self.assertEqual(str(ret), 'Unknown/unsupported content-type "image/png"')
     self.setupTween(settings={'pyramid_input.fail-unknown': False})
-    self.setupRequest('/path', '\x89PNG\r\n', ctype='image/png')
+    self.setupRequest('/path', b'\x89PNG\r\n', ctype='image/png')
     self.assertEqual(self.tween(self.request), canon({}))
 
   def test_config_error_handler(self):
@@ -264,17 +265,17 @@ class TestInputTween(unittest.TestCase):
       import json
       request.response.status_code = error.code
       request.response.content_type = 'application/json'
-      request.response.body = json.dumps({
-        'status'  : error.code,
-        'message' : str(error)
-      })
+      request.response.body = json.dumps(OrderedDict([
+        ('status', error.code),
+        ('message', str(error)),
+      ])).encode('ascii')
       return request.response
     self.setupTween(settings={'pyramid_input.error-handler': error_handler})
     self.setupRequest('/path', '<|>-+-<|>', ctype='application/xml')
     ret = self.tween(self.request)
     self.assertEqual(ret.status_code, 400)
     self.assertEqual(ret.content_type, 'application/json')
-    self.assertEqual(ret.body, '{"status": 400, "message": "Invalid XML"}')
+    self.assertEqual(ret.body, b'{"status": 400, "message": "Invalid XML"}')
 
 
 #------------------------------------------------------------------------------
