@@ -98,6 +98,27 @@ class TestInputTween(unittest.TestCase):
     self.setupRequest('/path', 'foo.zig=bar&foo.zoo-0=e0&foo.zoo-1=e1')
     self.assertEqual(self.tween(self.request), canon({'foo': {'zig': 'bar', 'zoo': ['e0', 'e1']}}))
 
+  def test_qs_invalid(self):
+    # note: unfortunately, formencode's `variable_decode` behaves differently
+    #       in python 2 vs. python 3...
+    # todo: do something about this! perhaps use `morph.unflatten()` instead?
+    #       for now, a ticket was opened against formencode:
+    #         https://github.com/formencode/formencode/issues/92
+    self.setupRequest('/path', 'foo-1.zig=one&foo.0.zag=zog&foo-0.zig=two')
+    if six.PY3:
+      with self.assertLogs() as cm:
+        self.assertEqual(
+          self.tween(self.request),
+          canon({'foo-1.zig': 'one', 'foo.0.zag': 'zog', 'foo-0.zig': 'two'}))
+      self.assertEqual(len(cm.output), 1)
+      self.assertEqual(
+        cm.output[0].split('\n', 1)[0],
+        'ERROR:pyramid_input:failed parsing key-value pairs')
+    else:
+      self.assertEqual(
+        self.tween(self.request),
+        canon({'foo': [{'zig': 'two'}, {'zig': 'one'}, {'zag': 'zog'}]}))
+
   def test_json(self):
     self.setupRequest('/path', '{"foo":{"zig":"bar","zoo":["e0","e1"]}}', ctype='application/json')
     self.assertEqual(self.tween(self.request), canon({'foo': {'zig': 'bar', 'zoo': ['e0', 'e1']}}))
