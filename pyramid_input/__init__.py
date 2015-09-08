@@ -6,9 +6,10 @@
 # copy: (C) Copyright 2015-EOT Canary Health, Inc., All Rights Reserved.
 #------------------------------------------------------------------------------
 
+import logging
+
 from pyramid.settings import aslist, asbool
 from pyramid.httpexceptions import HTTPException, HTTPBadRequest
-import logging
 import asset
 from aadict import aadict
 import globre
@@ -149,10 +150,6 @@ def _compute(request, conf):
         raise HTTPBadRequest(_(ERRMSG_UNSUPPORTED).format(
           content_type=request.content_type))
   if pay:
-
-    # import pdb;pdb.set_trace()
-
-
     if conf.reqdict and not morph.isdict(pay):
       raise HTTPBadRequest(ERRMSG_DICTTYPE)
     if not qs or not morph.isdict(pay):
@@ -168,8 +165,8 @@ def parse_pairs(pairs, conf):
   ret = mergeInto(dict(), pairs.items(), False)
   try:
     return dict(formencode.variabledecode.variable_decode(ret))
-  except Exception:
-    # todo: raise an exception?...
+  except Exception as exc:
+    log.exception('failed parsing key-value pairs')
     return ret
 
 #------------------------------------------------------------------------------
