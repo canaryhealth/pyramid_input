@@ -25,13 +25,12 @@ test_dependencies = [
 ]
 
 dependencies = [
-  'distribute           >= 0.6.24',
   'pyramid              >= 1.4.2',
   'FormEncode           >= 1.2.5',
-  'asset                >= 0.6',
-  'globre               >= 0.1.2',
-  'aadict               >= 0.2.1',
-  'morph                >= 0.1.1',
+  'asset                >= 0.6.3',
+  'globre               >= 0.1.3',
+  'aadict               >= 0.2.2',
+  'morph                >= 0.1.2',
   'six                  >= 1.6.0',
 ]
 
