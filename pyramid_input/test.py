@@ -60,14 +60,14 @@ class TestInputTween(unittest.TestCase):
     self.registry.settings = settings or {}
     self.tween = factory(handler or self.handler, self.registry)
 
-  def setupRequest(self, url='/', data=None, ctype=None, headers=None):
+  def setupRequest(self, url='/', data=None, ctype=None, headers=None, params=None):
     if not self.tween:
       self.setupTween()
     if ctype:
       if not headers:
         headers = dict()
       headers['content-type'] = ctype
-    request = Request.blank(url, headers=headers, POST=data)
+    request = Request.blank(url, headers=headers, POST=data, **(params or {}))
     self.request = request
     self.request.registry = self.registry
 
@@ -260,6 +260,7 @@ class TestInputTween(unittest.TestCase):
     self.assertEqual(self.tween(self.request), canon({'foo': 'bar'}))
 
   def test_config_require_dict(self):
+    self.needYaml()
     self.setupRequest('/path', 'foo: bar', ctype='application/yaml')
     self.assertEqual(self.tween(self.request), canon({'foo': 'bar'}))
     self.setupRequest('/path', '["foo", "bar"]', ctype='application/yaml')
@@ -297,6 +298,16 @@ class TestInputTween(unittest.TestCase):
     self.assertEqual(ret.status_code, 400)
     self.assertEqual(ret.content_type, 'application/json')
     self.assertEqual(ret.body, b'{"status": 400, "message": "Invalid XML"}')
+
+  def test_method_patch(self):
+    self.setupRequest(
+      '/path',
+      ctype   = 'application/x-www-form-urlencoded',
+      params  = dict(
+        method  = 'PATCH',
+        body    = 'foo.zig=bar&foo.zoo-0=e0&foo.zoo-1=e1'
+      ))
+    self.assertEqual(self.tween(self.request), canon({'foo': {'zig': 'bar', 'zoo': ['e0', 'e1']}}))
 
 
 #------------------------------------------------------------------------------

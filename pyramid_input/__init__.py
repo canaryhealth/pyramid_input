@@ -15,6 +15,7 @@ from aadict import aadict
 import globre
 import formencode
 import morph
+from six.moves.urllib.parse import parse_qs
 try:
   import yaml
 except ImportError:
@@ -28,6 +29,7 @@ log = logging.getLogger(__name__)
 
 CONFIG_PREFIX               = 'pyramid_input.'
 DEFAULT_ATTRIBUTE_NAME      = 'input'
+DEFAULT_REPARSE_METHODS     = 'PATCH',
 
 FORM_CTYPES_PREFIX          = 'application/x-www-form-urlencoded', 'multipart/form-data',
 JSON_CTYPES_PREFIX          = 'application/json', 'application/x-json', 'text/json', 'text/x-json'
@@ -52,6 +54,7 @@ def factory(handler, registry):
                   for el in aslist(get('include', []))]
   conf.exclude = [globre.compile(el, globre.EXACT)
                   for el in aslist(get('exclude', []))]
+  conf.reparse = aslist(get('reparse-methods', DEFAULT_REPARSE_METHODS))
   conf.name    = get('attribute-name', DEFAULT_ATTRIBUTE_NAME)
   conf.deep    = asbool(get('combine.deep', True))
   conf.reqdict = asbool(get('require-dict', True))
@@ -138,7 +141,10 @@ def _compute(request, conf):
   pay = None
   if request.content_type and request.content_length:
     if isContentType(request, FORM_CTYPES_PREFIX):
-      pay = parse_pairs(request.POST, conf)
+      if conf.reparse and request.method in conf.reparse:
+        pay = parse_form(request, conf)
+      else:
+        pay = parse_pairs(request.POST, conf)
     elif conf.jfmt and isContentType(request, JSON_CTYPES_PREFIX, JSON_CTYPES_SUFFIX):
       pay = parse_json(request, conf)
     elif conf.yfmt and isContentType(request, YAML_CTYPES_PREFIX, YAML_CTYPES_SUFFIX):
@@ -161,8 +167,20 @@ def _compute(request, conf):
   return qs
 
 #------------------------------------------------------------------------------
+def parse_form(request, conf):
+  return parse_items([
+    (key, val)
+    for key, vals in parse_qs(request.body or '').items()
+    for val in vals
+  ], conf)
+
+#------------------------------------------------------------------------------
 def parse_pairs(pairs, conf):
-  ret = mergeInto(dict(), pairs.items(), False)
+  return parse_items(pairs.items(), conf)
+
+#------------------------------------------------------------------------------
+def parse_items(items, conf):
+  ret = mergeInto(dict(), items, False)
   try:
     return dict(formencode.variabledecode.variable_decode(ret))
   except Exception as exc:
