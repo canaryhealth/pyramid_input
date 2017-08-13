@@ -62,7 +62,7 @@ setup(
   long_description      = read('README.rst'),
   classifiers           = classifiers,
   author                = 'Philip J Grabner, Canary Health Inc',
-  author_email          = 'oss@canary.md',
+  author_email          = 'oss-pypi@canary.md',
   url                   = 'http://github.com/canaryhealth/pyramid_input',
   keywords              = 'web wsgi pyramid http input data normalize get post json yaml xml',
   packages              = find_packages(),
