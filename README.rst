@@ -304,6 +304,13 @@ The following configuration settings can be set in your application's
     def function(request, error):
       return error
 
+* ``pyramid_input.reparse-methods`` : list(str), default: 'PATCH'
+
+  Enable a workaround for pyramid 1.4.2+ that does not properly parse
+  the `application/x-www-form-urlencoded` request body if the request
+  method is PATCH. It is unknown if other methods have this issue or
+  if it has been fixed.
+
 * ``pyramid_input.json.enable`` : bool, default: true
 
 * ``pyramid_input.json.parser`` : symbol-spec, default: null
